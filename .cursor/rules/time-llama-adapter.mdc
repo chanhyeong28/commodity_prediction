@@ -1,0 +1,88 @@
+---
+alwaysApply: true
+description: Time-LlaMA-style adapter rules using patch tokens, cross-attention to KG context, and PEFT/LoRA
+---
+
+# Time-LlaMA-style Adapter Rules (Patch Tokens + Cross-Attention + PEFT)
+
+This rule standardizes how we adapt existing code (Lag-Llama, PEFT) to implement a Time-LlaMA-style forecaster:
+
+- Use patches (windows) as tokens, not entire series.
+- Build one embedding per patch per series; all series share the same embedding space.
+- Fuse KG context via a small cross-attention adapter before the backbone.
+- Use PEFT/LoRA (and dynamic routing later) to stay within 16GB GPU.
+
+## Tokenization (Patch-as-Token)
+
+- Input windowing
+  - Default patch sizes: {7, 14, 28} days (weekly primary); allow overlap (stride {1, 3, 7}).
+  - For each instrument, produce a sequence of patches up to the lookback horizon.
+
+- Patch embedding
+  - Option A (fast): 1D CNN → pooling → linear to D.
+  - Option B (robust): small Transformer encoder over patch → pooled → linear to D.
+  - Output dimension D = 128 (or 256 if VRAM allows).
+
+- Sequence fed to backbone
+  - Concatenate patch embeddings across variables (80 commodities) along the token dimension.
+  - Optional: add type embeddings for exchange/instrument family.
+
+## KG Context Fusion (Cross-Attention Adapter)
+
+- Context construction
+  - Retrieve subgraph per the KG rule; compress node embeddings to D_ctx (e.g., 64) via PCA/linear.
+  - Context tokens = top-K retrieved nodes (TS_PATCH heavy) + minimal entities.
+
+- Cross-attention
+  - Time tokens act as queries; context tokens act as keys/values.
+  - Implement as a light adapter block before main backbone (or between early blocks).
+  - Keep 1–2 heads, D_ctx ≤ D to reduce memory.
+
+- Serialization contract
+  - Adapter expects a tensor of shape [B, T_ctx, D_ctx] from the retriever.
+  - If no context available, pass empty and skip attention.
+
+## Backbone and PEFT
+
+- Backbone
+  - Start with adapted Lag-Llama module as the encoder (keep causal attention and RMSNorm).
+  - Reduce n_layer, n_head, n_embd_per_head to fit 16GB for 80 tokens + context.
+
+- PEFT/LoRA
+  - Target modules: q_proj, k_proj, v_proj, o_proj, and MLP projections.
+  - Typical LoRA config: r=16, alpha=32, dropout=0.05–0.1.
+  - Keep base weights frozen; train adapters + cross-attention + output head.
+
+- Dynamic routing (later phase)
+  - Introduce a small router over adapter sets per layer, selecting top-k.
+  - Start static; add dynamic routing only after baseline is stable.
+
+## Output Head
+
+- For multi-target returns, project final hidden states to required horizons.
+- Probabilistic outputs optional; start with MAE/MSE and add Student-T later if needed.
+
+## Loss & Training
+
+- Loss: MSE/MAE on targets; optional auxiliary load-balancing when dynamic routing added.
+- Data: single forecasting task; train on historical windows, validate by rolling-origin.
+- Batching: ensure pad/mask logic for variable patch lengths across instruments.
+
+## Memory & Performance Guidelines
+
+- Keep token count manageable: cap total tokens ≤ 256 (patch + context).
+- Use float16 mixed precision; gradient checkpointing if needed.
+- Cache KG retrieval per batch; reuse context across nearby dates.
+
+## Interfaces (expected shapes)
+
+- time_patches: [B, T_ts, D]
+- kg_context:  [B, T_ctx, D_ctx]  (optional)
+- output:      [B, H, num_targets]
+
+## Implementation Path (adaptation notes)
+
+- Reuse Lag-Llama transformer blocks (module.py) as backbone; replace input embedding with patch-token embeddings.
+- Insert a small CrossAttentionAdapter(module): forward(time_tokens, context_tokens?) → aligned_time_tokens.
+- Wrap with PEFT using `peft.LoraConfig` targeting attention and MLP projections.
+

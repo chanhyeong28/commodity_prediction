@@ -171,3 +171,8 @@ cython_debug/
 .pypirc
 
 kaggle_data/
+trash/
+database/
+docs/
+logs/
+references/
