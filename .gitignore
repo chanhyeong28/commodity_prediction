@@ -170,7 +170,7 @@ cython_debug/
 # PyPI configuration file
 .pypirc
 
-kaggle_data/
+data/raw/
 trash/
 database/
 docs/
