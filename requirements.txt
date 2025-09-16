@@ -37,3 +37,8 @@ wandb>=0.15.0
 pytest>=7.0.0
 black>=22.0.0
 flake8>=5.0.0
+
+# langgraph
+langgraph
+langchain-core
+langchain-community
