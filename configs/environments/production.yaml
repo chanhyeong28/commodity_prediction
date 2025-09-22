@@ -1,0 +1,109 @@
+# Production Environment Configuration
+system:
+  name: "commodity_forecasting_prod"
+  version: "1.0.0"
+  debug: false
+  device: "cuda"
+  num_workers: 4
+  seed: 42
+  log_level: "INFO"
+  experiment_name: "commodity_forecasting_prod"
+  use_wandb: true
+  wandb_project: "commodity-forecasting"
+
+data:
+  raw_path: "data/raw"
+  processed_path: "data/processed"
+  train_file: "train.csv"
+  test_file: "test.csv"
+  target_pairs_file: "target_pairs.csv"
+  train_labels_file: "train_labels.csv"
+  preprocessing:
+    fill_method: "forward_backward"
+    normalize: true
+    remove_outliers: true
+    outlier_threshold: 3.0
+
+patches:
+  window_sizes: [7, 14, 28]
+  strides: [1, 3, 7]
+  embedding_dim: 128
+  patch_size: 7
+  max_patches_per_series: 100
+  normalize_patches: true
+  min_patch_length: 5
+  embedder:
+    type: "transformer"
+    hidden_dim: 256
+
+knowledge_graph:
+  db_path: "database/commodity_kg.db"
+  dev_db_path: "database/prod_commodity_kg.db"
+  window_sizes: [7, 14, 28]
+  strides: [1, 3, 7]
+  max_nodes_per_series: 100
+  embedding_dim: 128
+  correlation_threshold: 0.3
+  p_value_threshold: 0.05
+  max_correlations_per_node: 50
+  extract_entities: true
+  include_regime_detection: true
+  retrieval:
+    max_retrieval_nodes: 50
+    max_retrieval_edges: 100
+    similarity_threshold: 0.2
+    cache_size: 1000
+
+model:
+  d_model: 256
+  n_heads: 8
+  n_layers: 6
+  d_ff: 1024
+  dropout: 0.1
+  max_seq_len: 256
+  patch_embed_dim: 128
+  patch_size: 7
+  context_dim: 128
+  d_context: 128
+  n_context_heads: 8
+  max_context_tokens: 50
+  use_peft: true
+  lora_r: 16
+  lora_alpha: 32
+  lora_dropout: 0.1
+  num_horizons: 4
+  output_dim: 1
+  n_targets: 424
+  forecast_horizons: [1, 2, 3, 4]
+
+training:
+  batch_size: 32
+  learning_rate: 1e-4
+  num_epochs: 100
+  warmup_steps: 1000
+  optimizer: "adamw"
+  weight_decay: 0.01
+  scheduler: "cosine"
+  train_split: 0.8
+  val_split: 0.2
+  test_split: 0.0
+  early_stopping_patience: 10
+  save_best_only: true
+  loss_function: "mse"
+  log_interval: 50
+  save_interval: 500
+  eval_interval: 100
+
+inference:
+  batch_size: 64
+  use_graphrag: true
+  context_length: 50
+  output_path: "outputs/predictions.csv"
+  submission_format: "kaggle"
+  max_inference_time: 3600
+  num_workers: 4
+  num_samples: 1000
+  confidence_level: 0.95
+  output_format: "csv"
+  save_predictions: true
+  save_uncertainty: true

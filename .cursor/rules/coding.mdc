@@ -1,0 +1,9 @@
+---
+description:
+globs:
+alwaysApply: true
+---
+
+- DO NOT CREATE MAKRDOWNS or summary at the end of conversation. We only need README.md and AGENT.md in our codebase. WE don't need any more markdown files in the codebase.
+
+- Move the unnecessary files to trash/ directory. NEVER REMOVE THE FILES.

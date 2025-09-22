@@ -1,0 +1,108 @@
+# Kaggle Environment Configuration
+system:
+  name: "commodity_forecasting_kaggle"
+  version: "1.0.0"
+  debug: false
+  device: "cuda"
+  num_workers: 2
+  seed: 42
+  log_level: "INFO"
+  experiment_name: "commodity_forecasting_kaggle"
+  use_wandb: false
+
+data:
+  raw_path: "/kaggle/input"
+  processed_path: "/tmp/processed"
+  train_file: "train.csv"
+  test_file: "test.csv"
+  target_pairs_file: "target_pairs.csv"
+  train_labels_file: "train_labels.csv"
+  preprocessing:
+    fill_method: "forward_backward"
+    normalize: true
+    remove_outliers: false
+    outlier_threshold: 3.0
+
+patches:
+  window_sizes: [7, 14]
+  strides: [7]
+  embedding_dim: 64
+  patch_size: 7
+  max_patches_per_series: 50
+  normalize_patches: true
+  min_patch_length: 5
+  embedder:
+    type: "cnn"
+    hidden_dim: 128
+
+knowledge_graph:
+  db_path: "/kaggle/input/commodity_kg.db"
+  dev_db_path: "/tmp/commodity_kg.db"
+  window_sizes: [7, 14]
+  strides: [7]
+  max_nodes_per_series: 50
+  embedding_dim: 64
+  correlation_threshold: 0.3
+  p_value_threshold: 0.05
+  max_correlations_per_node: 20
+  extract_entities: true
+  include_regime_detection: false
+  retrieval:
+    max_retrieval_nodes: 30
+    max_retrieval_edges: 60
+    similarity_threshold: 0.2
+    cache_size: 500
+
+model:
+  d_model: 128
+  n_heads: 8
+  n_layers: 4
+  d_ff: 512
+  dropout: 0.1
+  max_seq_len: 128
+  patch_embed_dim: 64
+  patch_size: 7
+  context_dim: 64
+  d_context: 64
+  n_context_heads: 4
+  max_context_tokens: 30
+  use_peft: true
+  lora_r: 16
+  lora_alpha: 32
+  lora_dropout: 0.1
+  num_horizons: 4
+  output_dim: 1
+  n_targets: 424
+  forecast_horizons: [1, 2, 3, 4]
+
+training:
+  batch_size: 16
+  learning_rate: 1e-4
+  num_epochs: 50
+  warmup_steps: 500
+  optimizer: "adamw"
+  weight_decay: 0.01
+  scheduler: "cosine"
+  train_split: 0.8
+  val_split: 0.2
+  test_split: 0.0
+  early_stopping_patience: 5
+  save_best_only: true
+  loss_function: "mse"
+  log_interval: 10
+  save_interval: 100
+  eval_interval: 50
+
+inference:
+  batch_size: 32
+  use_graphrag: true
+  context_length: 30
+  output_path: "/kaggle/working/predictions.csv"
+  submission_format: "kaggle"
+  max_inference_time: 1800
+  num_workers: 2
+  num_samples: 100
+  confidence_level: 0.95
+  output_format: "csv"
+  save_predictions: true
+  save_uncertainty: false
