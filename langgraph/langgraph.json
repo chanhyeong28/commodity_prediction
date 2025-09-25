@@ -1,8 +1,15 @@
 {
-  "$schema": "https://langgra.ph/schema.json",
-  "dependencies": ["."],
+  "dockerfile_lines": [],
   "graphs": {
-    "agent": "./src/agent/graph.py:graph"
+    "scope_research": "./src/agent/research_agent_scope.py:scope_research",
+    "research_agent": "./src/agent/research_agent.py:researcher_agent",
+    "research_agent_mcp": "./src/agent/research_agent_mcp.py:agent_mcp",
+    "research_agent_supervisor": "./src/agent/multi_agent_supervisor.py:supervisor_agent",
+    "research_agent_full": "./src/agent/research_agent_full.py:agent"
   },
-  "env": ".env"
+  "python_version": "3.11",
+  "env": ".env",
+  "dependencies": [
+    "."
+  ]
 }
