@@ -1,0 +1,48 @@
+# TimeLlaMA Ablation Study Prompts
+# Different prompt configurations for testing ablation variants
+
+## TimeLlaMA (Full) - Complete prompt with all components
+<|start_prompt|>Dataset description: Commodity price forecasting task Task description: forecast the next 96 steps given the previous 96 steps information; Input statistics: min value -2.45, max value 3.21, median value 0.12, the trend of input is upward, top 5 lags are : [1, 7, 14, 21, 30]<|<end_prompt|>
+
+## TimeLlaMA-1 - No modality alignment (direct feed to LLM)
+# This variant removes the prompt alignment module entirely
+# Time series tokens go directly to LLM backbone without prompt alignment
+
+## TimeLlaMA-2 - Concatenate prompt as prefix
+# Text prompt is concatenated to the left of time-series tokens
+# Format: [PROMPT_TOKENS] + [TIME_SERIES_TOKENS]
+<|start_prompt|>Dataset description: Commodity price forecasting task Task description: forecast the next 96 steps given the previous 96 steps information; Input statistics: min value -2.45, max value 3.21, median value 0.12, the trend of input is upward, top 5 lags are : [1, 7, 14, 21, 30]<|<end_prompt|> [TIME_SERIES_DATA]
+
+## TimeLlaMA-3 - Frozen LLM backbone
+# LLM backbone is kept entirely frozen
+# Only prompt alignment and output layers are trainable
+<|start_prompt|>Dataset description: Commodity price forecasting task Task description: forecast the next 96 steps given the previous 96 steps information; Input statistics: min value -2.45, max value 3.21, median value 0.12, the trend of input is upward, top 5 lags are : [1, 7, 14, 21, 30]<|<end_prompt|>
+
+## TimeLlaMA-4 - Vanilla LoRA instead of DynaLoRA
+# Uses standard LoRA instead of dynamic LoRA
+<|start_prompt|>Dataset description: Commodity price forecasting task Task description: forecast the next 96 steps given the previous 96 steps information; Input statistics: min value -2.45, max value 3.21, median value 0.12, the trend of input is upward, top 5 lags are : [1, 7, 14, 21, 30]<|<end_prompt|>
+
+## TimeLlaMA-5 - AdaLoRA instead of DynaLoRA
+# Uses AdaLoRA (Adaptive LoRA) instead of DynaLoRA
+<|start_prompt|>Dataset description: Commodity price forecasting task Task description: forecast the next 96 steps given the previous 96 steps information; Input statistics: min value -2.45, max value 3.21, median value 0.12, the trend of input is upward, top 5 lags are : [1, 7, 14, 21, 30]<|<end_prompt|>
+
+## TimeLlaMA-6 - MOELoRA instead of DynaLoRA
+# Uses MOELoRA (Mixture of Experts LoRA) instead of DynaLoRA
+<|start_prompt|>Dataset description: Commodity price forecasting task Task description: forecast the next 96 steps given the previous 96 steps information; Input statistics: min value -2.45, max value 3.21, median value 0.12, the trend of input is upward, top 5 lags are : [1, 7, 14, 21, 30]<|<end_prompt|>
+
+## Additional Test Prompts for Different Scenarios
+
+### High Volatility Scenario
+<|start_prompt|>Dataset description: High volatility commodity forecasting Task description: forecast the next 96 steps given the previous 96 steps information; Input statistics: min value -8.92, max value 12.45, median value 0.67, the trend of input is volatile, top 5 lags are : [1, 2, 3, 4, 5]<|<end_prompt|>
+
+### Low Volatility Scenario
+<|start_prompt|>Dataset description: Stable commodity forecasting Task description: forecast the next 96 steps given the previous 96 steps information; Input statistics: min value 0.12, max value 0.89, median value 0.45, the trend of input is stable, top 5 lags are : [24, 48, 72, 96, 120]<|<end_prompt|>
+
+### Strong Trend Scenario
+<|start_prompt|>Dataset description: Strong trend commodity forecasting Task description: forecast the next 96 steps given the previous 96 steps information; Input statistics: min value 1.23, max value 15.67, median value 8.45, the trend of input is upward, top 5 lags are : [1, 2, 3, 4, 5]<|<end_prompt|>
+
+### Seasonal Pattern Scenario
+<|start_prompt|>Dataset description: Seasonal commodity forecasting Task description: forecast the next 96 steps given the previous 96 steps information; Input statistics: min value -1.45, max value 4.23, median value 1.89, the trend of input is upward, top 5 lags are : [7, 14, 21, 28, 35]<|<end_prompt|>
+
+### Long-term Forecasting Scenario
+<|start_prompt|>Dataset description: Long-term commodity forecasting Task description: forecast the next 720 steps given the previous 96 steps information; Input statistics: min value -2.34, max value 5.67, median value 2.12, the trend of input is upward, top 5 lags are : [7, 14, 28, 56, 84]<|<end_prompt|>

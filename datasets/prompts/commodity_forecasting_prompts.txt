@@ -1,0 +1,91 @@
+# TimeLlaMA Commodity Forecasting Prompts
+# These prompts are used for aligning time series data with natural language descriptions
+
+## Dataset Descriptions
+Time series forecasting task
+Commodity price prediction task
+Financial time series forecasting
+Economic indicator prediction
+Market trend analysis
+Supply chain forecasting
+Energy demand prediction
+Weather-based commodity forecasting
+Agricultural commodity prediction
+Metal price forecasting
+Oil and gas price prediction
+Currency exchange rate forecasting
+Stock market prediction
+Cryptocurrency price forecasting
+Real estate price prediction
+Consumer demand forecasting
+Production output prediction
+Sales forecasting
+Revenue prediction
+Cost forecasting
+
+## Task Descriptions
+forecast the next 96 steps given the previous 96 steps information
+forecast the next 192 steps given the previous 96 steps information
+forecast the next 336 steps given the previous 96 steps information
+forecast the next 720 steps given the previous 96 steps information
+predict future commodity prices based on historical data
+analyze market trends and predict price movements
+forecast demand for agricultural products
+predict energy consumption patterns
+forecast financial market indicators
+predict supply chain disruptions
+analyze seasonal patterns in commodity prices
+forecast inflation rates based on commodity prices
+predict currency fluctuations
+forecast economic growth indicators
+predict market volatility
+analyze correlation between different commodities
+forecast production capacity
+predict inventory levels
+forecast shipping costs
+predict raw material prices
+
+## Input Statistics Templates
+min value {min_val}, max value {max_val}, median value {median_val}
+the trend of input is {trend_direction}
+top 5 lags are: {lags_list}
+variance: {variance_val}
+standard deviation: {std_val}
+mean: {mean_val}
+skewness: {skewness_val}
+kurtosis: {kurtosis_val}
+autocorrelation: {autocorr_val}
+seasonality detected: {seasonality_bool}
+trend strength: {trend_strength}
+cyclical patterns: {cyclical_patterns}
+volatility: {volatility_val}
+momentum: {momentum_val}
+support level: {support_level}
+resistance level: {resistance_level}
+moving average: {ma_val}
+exponential moving average: {ema_val}
+relative strength index: {rsi_val}
+bollinger bands: {bb_val}
+macd: {macd_val}
+
+## Trend Directions
+upward
+downward
+sideways
+volatile
+stable
+increasing
+decreasing
+fluctuating
+trending up
+trending down
+consolidating
+breaking out
+breaking down
+reversing
+continuing
+accelerating
+decelerating
+oscillating
+mean reverting
+momentum building
