@@ -12,7 +12,8 @@ class PromptAlignment(nn.Module):
     between time series and natural language modalities.
 
     Args:
-        d_model: Model dimension
+        d_model: Model dimension (for time series tokens)
+        d_llm: LLM dimension (for prompt embeddings)
         num_heads: Number of attention heads
         attention_dropout: Dropout rate for attention weights
         use_residual: Whether to use residual connection
@@ -21,6 +22,7 @@ class PromptAlignment(nn.Module):
     def __init__(
         self, 
         d_model: int, 
+        d_llm: int,
         num_heads: int, 
         attention_dropout: float = 0.1,
         use_residual: bool = True
@@ -29,8 +31,12 @@ class PromptAlignment(nn.Module):
         assert d_model % num_heads == 0, "d_model must be divisible by num_heads"
         
         self.d_model = d_model
+        self.d_llm = d_llm
         self.num_heads = num_heads
         self.use_residual = use_residual
+        
+        # Project prompt embeddings from d_llm to d_model for cross-attention
+        self.prompt_projection = nn.Linear(d_llm, d_model)
         
         # Use the new CrossAttention implementation
         self.cross_attention = CrossAttention(
@@ -56,18 +62,22 @@ class PromptAlignment(nn.Module):
         
         Args:
             H0: Time series tokens [B, N, d_model]
-            HP: Prompt embeddings [B, P, d_model]
+            HP: Prompt embeddings [B, P, d_llm]
             
         Returns:
             aligned_tokens: Aligned time series tokens [B, N, d_model]
         """
-        # H0: [B, N, d_model], HP: [B, P, d_model]
+        # H0: [B, N, d_model], HP: [B, P, d_llm]
         B, N, D = H0.shape
         _, P, Dp = HP.shape
-        assert D == self.d_model and Dp == self.d_model, f"Dimension mismatch: H0={D}, HP={Dp}, expected={self.d_model}"
+        assert D == self.d_model, f"Time series dimension mismatch: H0={D}, expected={self.d_model}"
+        assert Dp == self.d_llm, f"Prompt dimension mismatch: HP={Dp}, expected={self.d_llm}"
+
+        # Project prompt embeddings from d_llm to d_model
+        HP_projected = self.prompt_projection(HP)  # [B, P, d_model]
 
         # Apply cross-attention
-        aligned_tokens = self.cross_attention(H0, HP, HP)
+        aligned_tokens = self.cross_attention(H0, HP_projected, HP_projected)
         
         # Apply residual connection if enabled
         if self.use_residual:

@@ -24,7 +24,7 @@ from .Transformer_EncDec import (
     TimeLlaMAEncoder,
     TimeLlaMADecoder
 )
-from .prompt_align import PromptAlignment
+from .Modality_Alignment import PromptAlignment
 from .lora import LoRALinear, DynaLoRAConfig, DynaLoRAController
 from .StandardNorm import Normalize
 
