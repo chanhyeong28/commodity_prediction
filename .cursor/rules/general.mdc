@@ -1,0 +1,13 @@
+---
+description: Rule that must be applied all the time
+globs: *.py, *.md
+alwaysApply: true
+---
+
+- NEVER create new files, NEVER delete any files, NEVER create new directories. Only work on existing files.
+- Your job is to reproduce the TimeLlaMA with our own data from /Users/minkeychang/commodity_prediction/kaggle/train.csv
+- We don't have text prompts ready yet so just work on reproducing the paper without running any codes.
+- Refer to /Users/minkeychang/commodity_prediction/references/timellama.html for the paper's content.
+- Your working directory is /Users/minkeychang/commodity_prediction/timellama
+- Your test files are under directory /Users/minkeychang/commodity_prediction/test/timellama
+- Your model weights are in the directory /Users/minkeychang/commodity_prediction/datasets/models
