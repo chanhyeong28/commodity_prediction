@@ -3,9 +3,16 @@ import torch.nn as nn
 from typing import Optional, List, Union, Dict
 from math import sqrt
 
-from timellama.layers import TSEmb, TSEmbConv, TSEmbHybrid, PromptAlignment
-from timellama.layers.StandardNorm import Normalize
-from timellama.layers.DynaLoRA import DynaLoRAConfig, DynaLoRAWrapper, create_dynalora_model
+# Use local package imports
+from layers import (
+    TSEmb,
+    TSEmbConv,
+    TSEmbHybrid,
+    PromptAlignment,
+    Normalize,
+    DynaLoRAConfig,
+    DynaLoRAWrapper,
+)
 
 
 class FlattenHead(nn.Module):
@@ -125,7 +132,6 @@ class TimeLlaMA(nn.Module):
         dropout: float = 0.1,
         head_dropout: float = 0.0,
         use_reprogramming: bool = True,
-        description: str = "Time series forecasting task",
         freeze_llm: bool = True,
         # DynaLoRA parameters
         use_dynalora: bool = False,
@@ -149,11 +155,11 @@ class TimeLlaMA(nn.Module):
         self.pred_len = pred_len
         self.num_channels = num_channels
         self.d_ff = d_ff or (4 * d_model)
-        self.description = description
         
         # DynaLoRA configuration
         self.use_dynalora = use_dynalora
         self.dynalora_wrapper = None
+        self.enable_cross_layer = dynalora_target_modules is not None and len(dynalora_target_modules) > 1
         
         # Ablation variant configuration
         self.ablation_variant = ablation_variant
@@ -193,16 +199,22 @@ class TimeLlaMA(nn.Module):
             raise ValueError(f"Unknown embedding_type: {embedding_type}")
         
         # Prompt alignment
-        self.align = PromptAlignment(d_model=d_model, num_heads=num_heads)
+        self.align = PromptAlignment(
+            d_model=d_model, 
+            d_llm=self.input_embeddings.embedding_dim,
+            num_heads=num_heads
+        )
+        
+        # Projection layer to map d_model to d_llm for LLM input
+        self.llm_projection = nn.Linear(d_model, self.input_embeddings.embedding_dim)
         
         # Reprogramming layer for vocabulary alignment
         if use_reprogramming:
             self.reprogramming_layer = ReprogrammingLayer(
-                d_model=d_model, 
-                n_heads=num_heads, 
-                d_ff=self.d_ff, 
+                d_model=d_model,
+                n_heads=num_heads,
                 d_llm=self.input_embeddings.embedding_dim,
-                attention_dropout=dropout
+                attention_dropout=dropout,
             )
         else:
             self.reprogramming_layer = None
@@ -211,18 +223,15 @@ class TimeLlaMA(nn.Module):
         if num_channels is not None:
             self.output_projection = FlattenHead(
                 n_vars=num_channels, 
-                nf=self.d_ff, 
+                nf=self.input_embeddings.embedding_dim,  # Use d_llm instead of d_ff
                 target_window=pred_len,
                 head_dropout=head_dropout
             )
         else:
-            self.output_head = nn.Linear(d_model, pred_len)
+            self.output_head = nn.Linear(self.input_embeddings.embedding_dim, pred_len)  # Use d_llm instead of d_model
         
-        # Normalization layers
-        if num_channels is not None:
-            self.normalize_layers = Normalize(num_channels, affine=False)
-        else:
-            self.normalize_layers = None
+        # Instance normalization (RevIN) disabled by default to match dataset scaling
+        self.normalize_layers = None
         
         # Apply DynaLoRA if enabled
         if self.use_dynalora:
@@ -244,22 +253,23 @@ class TimeLlaMA(nn.Module):
     ):
         """Apply DynaLoRA to the model."""
         if target_modules is None:
-            target_modules = ['q_proj', 'k_proj', 'v_proj', 'o_proj', 'gate_proj', 'up_proj', 'down_proj']
+            # Focus on attention modules for time series (simplified)
+            target_modules = ['q_proj', 'k_proj', 'v_proj', 'o_proj']
         
-        # Create DynaLoRA configuration
+        # Create DynaLoRA configuration with EXACT paper formulation
         config = DynaLoRAConfig(
             d_model=self.d_model,
             r_base=r_base,
             n_experts=n_experts,
+            k=2,  # Top-K selection
             lora_dropout=lora_dropout,
-            router_dropout=router_dropout,
             target_modules=target_modules,
-            temperature=1.0,
-            learnable_temperature=True
+            enable_cross_layer=self.enable_cross_layer,
+            use_exact_paper_formulation=True
         )
         
-        # Apply DynaLoRA to the model
-        self.dynalora_wrapper = DynaLoRAWrapper(self, config)
+        # Apply DynaLoRA to the LLM model, not the wrapper
+        self.dynalora_wrapper = DynaLoRAWrapper(self.llm, config)
         self.dynalora_wrapper.apply_dynalora(target_modules)
         
         # Freeze base layers and unfreeze LoRA parameters
@@ -296,62 +306,33 @@ class TimeLlaMA(nn.Module):
             return self.dynalora_wrapper.get_expert_usage()
         return {}
 
-    def calculate_lags(self, x_enc: torch.Tensor, top_k: int = 5) -> torch.Tensor:
-        """
-        Calculate top-k autocorrelation lags for prompt generation.
-        Adapted from Time-LLM's lag calculation.
-        """
-        q_fft = torch.fft.rfft(x_enc.permute(0, 2, 1).contiguous(), dim=-1)
-        k_fft = torch.fft.rfft(x_enc.permute(0, 2, 1).contiguous(), dim=-1)
-        res = q_fft * torch.conj(k_fft)
-        corr = torch.fft.irfft(res, dim=-1)
-        mean_value = torch.mean(corr, dim=1)
-        _, lags = torch.topk(mean_value, top_k, dim=-1)
-        return lags
 
-    def generate_prompt(
-        self, 
-        x_enc: torch.Tensor, 
-        pred_len: int, 
-        seq_len: int
-    ) -> List[str]:
-        """
-        Generate descriptive prompts for time series forecasting.
-        Adapted from Time-LLM's prompt generation.
-        """
-        B, T, N = x_enc.size()
-        x_enc_flat = x_enc.permute(0, 2, 1).contiguous().reshape(B * N, T, 1)
-        
-        min_values = torch.min(x_enc_flat, dim=1)[0]
-        max_values = torch.max(x_enc_flat, dim=1)[0]
-        medians = torch.median(x_enc_flat, dim=1).values
-        lags = self.calculate_lags(x_enc_flat)
-        trends = x_enc_flat.diff(dim=1).sum(dim=1)
-        
-        prompt = []
-        for b in range(x_enc_flat.shape[0]):
-            min_values_str = str(min_values[b].tolist()[0])
-            max_values_str = str(max_values[b].tolist()[0])
-            median_values_str = str(medians[b].tolist()[0])
-            lags_values_str = str(lags[b].tolist())
-            prompt_ = (
-                f"<|start_prompt|>Dataset description: {self.description}"
-                f"Task description: forecast the next {str(pred_len)} steps given the previous {str(seq_len)} steps information; "
-                "Input statistics: "
-                f"min value {min_values_str}, "
-                f"max value {max_values_str}, "
-                f"median value {median_values_str}, "
-                f"the trend of input is {'upward' if trends[b] > 0 else 'downward'}, "
-                f"top 5 lags are : {lags_values_str}<|<end_prompt>|>"
-            )
-            prompt.append(prompt_)
-        
-        return prompt
 
     @torch.no_grad()
     def build_prompt_embeddings(self, prompts: List[str], device: torch.device) -> torch.Tensor:
         """
-        Build prompt embeddings from text prompts.
+        Build prompt embeddings from given text prompts using frozen LLM components.
+        
+        This method implements the text prompt embedding process from the TimeLlaMA paper:
+        
+        Process Flow:
+        1. Given Text Prompts → LLM Tokenizer → Multiple Tokens
+        2. Multiple Tokens → Frozen Embedding Layer → Multiple Embeddings (HP,0)
+        3. HP,0 used as keys/values in cross-attention with time series tokens (H0) as queries
+        
+        Key Design Principles:
+        - Uses frozen LLM tokenizer (no training required)
+        - Uses frozen LLM embedding layer (no training required)  
+        - One text prompt produces multiple embedding vectors
+        - Embeddings serve as context for cross-attention alignment
+        - Prompts do NOT go through the LLM backbone (only used for alignment)
+        
+        Args:
+            prompts: List of given text prompts (one per batch sample)
+            device: Device to place embeddings on
+            
+        Returns:
+            prompt_embeddings: [B, P, d_llm] where P = number of tokens per prompt
         """
         toks = self.tokenizer(
             prompts,
@@ -362,6 +343,65 @@ class TimeLlaMA(nn.Module):
         )["input_ids"].to(device)
         emb = self.input_embeddings(toks)
         return emb
+    
+    def debug_prompt_tokenization(self, prompts: List[str], device: torch.device) -> Dict:
+        """
+        Debug method to visualize the prompt tokenization and embedding process.
+        
+        This method helps understand how given text prompts are processed:
+        1. Shows the original text prompts
+        2. Shows tokenization results (tokens per prompt)
+        3. Shows embedding dimensions
+        4. Demonstrates the "One text → Multiple embeddings" principle
+        
+        Args:
+            prompts: List of given text prompts
+            device: Device to process on
+            
+        Returns:
+            Dictionary containing debugging information
+        """
+        # Tokenize prompts
+        tokenized = self.tokenizer(
+            prompts,
+            return_tensors="pt",
+            padding=True,
+            truncation=True,
+            max_length=2048,
+        )
+        
+        input_ids = tokenized["input_ids"].to(device)
+        attention_mask = tokenized["attention_mask"].to(device)
+        
+        # Get embeddings
+        embeddings = self.input_embeddings(input_ids)
+        
+        # Decode tokens for visualization
+        decoded_tokens = []
+        for i in range(len(prompts)):
+            tokens = self.tokenizer.convert_ids_to_tokens(input_ids[i])
+            # Remove padding tokens
+            valid_tokens = [token for j, token in enumerate(tokens) if attention_mask[i][j] == 1]
+            decoded_tokens.append(valid_tokens)
+        
+        debug_info = {
+            "original_prompts": prompts,
+            "num_prompts": len(prompts),
+            "tokens_per_prompt": [len(tokens) for tokens in decoded_tokens],
+            "total_tokens": sum(len(tokens) for tokens in decoded_tokens),
+            "embedding_shape": embeddings.shape,  # [B, P, d_llm]
+            "embedding_dim": embeddings.shape[-1],
+            "sample_tokens": decoded_tokens[0][:10] if decoded_tokens else [],  # First 10 tokens of first prompt
+            "tokenization_summary": {
+                "one_text_becomes_multiple_tokens": True,
+                "one_token_becomes_one_embedding": True,
+                "result": "One text → Multiple tokens → Multiple embeddings",
+                "frozen_components": ["tokenizer", "embedding_layer"],
+                "trainable_components": ["cross_attention_weights"]
+            }
+        }
+        
+        return debug_info
 
     def forward(
         self,
@@ -370,19 +410,25 @@ class TimeLlaMA(nn.Module):
         x_dec: Optional[torch.Tensor] = None,       # Optional decoder input
         x_mark_dec: Optional[torch.Tensor] = None,  # Optional decoder time features
         mask: Optional[torch.Tensor] = None,        # Optional attention mask
-        use_prompt: bool = True,                    # Whether to use generated prompts
-        custom_prompts: Optional[List[str]] = None  # Custom prompts if provided
+        prompts: Optional[List[str]] = None         # Text prompts (one per batch sample)
     ) -> torch.Tensor:
         """
         Forward pass for Time-LlaMA model.
         
         Architecture per paper:
-        1. Time Series → Channel-as-Token Embedding → H0
-        2. Generate Text Prompts → Prompt Embeddings
-        3. Cross-Attention Alignment: H0 + Prompt Embeddings → Aligned H0
+        1. Time Series → Channel-as-Token Embedding → H0 [B, N, d_model]
+        2. Given Text Prompts → Tokenize → Embed → HP,0 [B, P, d_llm]
+        3. Cross-Attention Alignment: H0 (queries) + HP,0 (keys/values) → Aligned H0
         4. Reprogramming Layer (optional): Aligned H0 → LLM-compatible H0
         5. LLM Backbone: ONLY H0 goes through LLM (prompts do NOT go through LLM)
         6. Output Projection: LLM output → Forecast
+        
+        Text Prompt Embedding Process (Key Innovation):
+        - One text prompt per batch sample (not per channel)
+        - Given Text → LLM Tokenizer → Multiple tokens (e.g., 50-200 tokens)
+        - Multiple tokens → Frozen Embedding Layer → Multiple embeddings HP,0
+        - HP,0 serves as keys/values in cross-attention with H0 as queries
+        - Result: Rich context alignment without passing prompts through LLM
         
         Key Design Principle: "text prompt is not passed through the Transformer backbone 
         to minimize inference delay" (from paper)
@@ -393,8 +439,7 @@ class TimeLlaMA(nn.Module):
             x_dec: Optional decoder input (not used in this implementation)
             x_mark_dec: Optional decoder time features (not used)
             mask: Optional attention mask
-            use_prompt: Whether to generate and use prompts
-            custom_prompts: Custom prompts if provided
+            prompts: Text prompts (one per batch sample) - required for modality alignment
             
         Returns:
             y_hat: Forecasted values [B, N, TP]
@@ -402,38 +447,38 @@ class TimeLlaMA(nn.Module):
         device = x_enc.device
         B, TL, N = x_enc.shape
         
-        # Normalize input if normalization is enabled
-        if self.normalize_layers is not None:
-            x_enc = self.normalize_layers(x_enc, 'norm')
+        # Input normalization disabled (dataset-wide scaling handled in data loader)
         
         # 1) Channel-as-token embedding
         H0 = self.ts_emb(x_enc)                    # [B, N, d_model]
         
-        # 2) Generate and process prompts (for alignment only, NOT for LLM input)
-        if use_prompt:
-            if custom_prompts is not None:
-                prompts = custom_prompts
-            else:
-                prompts = self.generate_prompt(x_enc, self.pred_len, TL)
-            
+        # 2) Process given prompts (for alignment only, NOT for LLM input)
+        if prompts is not None:
+            # KEY: Text Prompt Embedding Process (per TimeLlaMA paper)
+            # Given text prompts → LLM Tokenizer → Multiple tokens → Frozen Embedding Layer → Multiple embeddings
+            # Result: HP,0 [B, P, d_llm] where P = number of tokens per prompt
             prompt_embeddings = self.build_prompt_embeddings(prompts, device)  # [B, P, d_llm]
             
             # 3) Prompt alignment via cross-attention
-            # This aligns time series tokens with prompt embeddings but prompts do NOT go through LLM
+            # H0 (time series tokens) as queries, HP,0 (prompt embeddings) as keys/values
+            # This aligns time series tokens with prompt context but prompts do NOT go through LLM
             H0 = self.align(H0, prompt_embeddings)  # [B, N, d_model]
         
-        # 4) Reprogramming layer (if enabled)
+        # 4) Align to LLM input dimension
         if self.reprogramming_layer is not None:
-            # Get word embeddings for vocabulary alignment
+            # Use reprogramming against vocabulary embeddings to map to d_llm
             word_embeddings = self.input_embeddings.weight  # [vocab_size, d_llm]
-            H0 = self.reprogramming_layer(H0, word_embeddings, word_embeddings)
+            H0_llm = self.reprogramming_layer(H0, word_embeddings, word_embeddings)  # [B, N, d_llm]
+        else:
+            # Direct linear projection to d_llm
+            H0_llm = self.llm_projection(H0)  # [B, N, d_llm]
         
-        # 5) LLM encoding
+        # 6) LLM encoding
         # Per paper: "text prompt is not passed through the Transformer backbone to minimize inference delay"
         # Only aligned time series tokens go through the LLM backbone
-        llm_out = self.llm(inputs_embeds=H0).last_hidden_state  # [B, N, d_llm]
+        llm_out = self.llm(inputs_embeds=H0_llm).last_hidden_state  # [B, N, d_llm]
         
-        # 6) Output projection
+        # 7) Output projection
         if hasattr(self, 'output_projection'):
             # Multi-variate case with FlattenHead
             # Reshape for FlattenHead: [B, N, d_llm] -> [B, N, 1, d_llm]
@@ -443,9 +488,7 @@ class TimeLlaMA(nn.Module):
             # Single-variate case with simple linear head
             y_hat = self.output_head(llm_out)  # [B, N, TP]
         
-        # Denormalize output if normalization was applied
-        if self.normalize_layers is not None:
-            y_hat = self.normalize_layers(y_hat, 'denorm')
+        # Denormalization is not applied here; outputs remain on dataset-scaled space
         
         return y_hat
 
@@ -454,11 +497,12 @@ class TimeLlaMA(nn.Module):
         x_enc: torch.Tensor, 
         x_mark_enc: Optional[torch.Tensor] = None,
         x_dec: Optional[torch.Tensor] = None,
-        x_mark_dec: Optional[torch.Tensor] = None
+        x_mark_dec: Optional[torch.Tensor] = None,
+        prompts: Optional[List[str]] = None
     ) -> torch.Tensor:
         """
         Forecast method for compatibility with Time-LLM interface.
         """
-        return self.forward(x_enc, x_mark_enc, x_dec, x_mark_dec)
+        return self.forward(x_enc, x_mark_enc, x_dec, x_mark_dec, prompts=prompts)
 
 

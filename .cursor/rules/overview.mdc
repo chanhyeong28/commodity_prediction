@@ -1,0 +1,57 @@
+///---
+alwaysApply: true
+description: Time-LlaMA implementation constraints and workflow for this repo
+---
+///# Time-LlaMA Implementation Overview (Project Rules)
+
+## Scope and Constraints
+- Work ONLY within existing files in this repository; do not change project structure.
+- NEVER create new files or directories; NEVER delete files or directories.
+- Do not invoke long-running or interactive commands; avoid anything that can hang the environment.
+- Keep edits minimal and targeted; preserve existing indentation and formatting.
+
+## Entry Points and Key Files
+- Training/evaluation: [src/run_timellama.py](mdc:src/run_timellama.py)
+- Data pipeline (Mitsui-only): [src/data_provider/dataloader.py](mdc:src/data_provider/dataloader.py), [src/data_provider/datafactory.py](mdc:src/data_provider/datafactory.py)
+- Model: [src/model/TimeLlaMA.py](mdc:src/model/TimeLlaMA.py)
+- DynaLoRA: [src/DynaLoRA/config.py](mdc:src/DynaLoRA/config.py), [src/DynaLoRA/core.py](mdc:src/DynaLoRA/core.py), [src/DynaLoRA/router.py](mdc:src/DynaLoRA/router.py)
+
+## DataLoader (Time-LlaMA Style)
+- Channel-as-token: process ALL channels together per sample.
+- No label overlap: no `label_len` usage; direct mapping from lookback to horizon.
+- No time features: return `(seq_x, seq_y, None, None)`.
+- Optional support: `few_shot_ratio` may subsample training length; keep behavior deterministic.
+- Do not add prompt logic to the dataloader; keep it tensor-only.
+
+## Prompts (Given, Not Generated)
+- Time-LlaMA uses GIVEN prompts (not data-generated). Prompts are selected externally and passed per-batch.
+- Store prompts in existing prompt files (e.g., `datasets/prompts/*.txt`) and load them in [src/run_timellama.py](mdc:src/run_timellama.py).
+- For each batch:
+  - Select the appropriate regime prompt; replace placeholders like `<T>` (seq_len) and `<H>` (pred_len).
+  - Pass a `List[str]` of length batch_size via `model(..., prompts=prompts_list)`.
+  - Do NOT add a new prompt loader file; keep this logic in the run script.
+- Performance: If needed, cache per-regime prompt embeddings in the training loop using the model’s tokenizer/embedding; do not add new modules/files.
+
+## Model Behavior (Per Paper)
+- Prompts are tokenized and embedded, then used as keys/values in cross-attention for modality alignment.
+- Prompts DO NOT pass through the LLM backbone; only aligned time-series tokens are encoded by the LLM.
+- Keep the cross-attention alignment and reprogramming layers as implemented in [src/model/TimeLlaMA.py](mdc:src/model/TimeLlaMA.py).
+
+## DynaLoRA Integration
+- Apply DynaLoRA to attention modules only: `q_proj`, `k_proj`, `v_proj`, `o_proj`...
+- Freeze base LLM layers; unfreeze LoRA parameters; include load-balancing loss per router outputs.
+- Do not introduce new modules or files; modify only existing DynaLoRA code paths if required.
+
+## Backbone and Config
+- Preferred backbone: Llama-3 1B; verify and align hidden size \(d_m = 2048\) before changing code.
+- Avoid downloading models or adding new dependencies; use locally available assets.
+
+## Non-Goals
+- No PyTorch Lightning integration (follow Time-LlaMA/Time-LLM style).
+- No consolidation into new files; keep current file layout and update in place.
+- No addition of time feature engineering (`_mark`) in Time-LlaMA path.
+
+## Operational Guidelines
+- Keep changes small and reversible; never introduce blocking calls.
+- Respect dataset scope: Mitsui commodity data only.
+- If prompts need updating, do it in the run script; do not move prompt logic into the dataloader.

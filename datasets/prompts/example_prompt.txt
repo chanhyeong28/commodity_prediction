@@ -1,0 +1,169 @@
+# Financial Market Coincident Indices - Current State
+
+**Analysis Date**: 2024-01-03
+
+## Coincident Index Summary
+
+The following coincident indices reflect the current state of various market themes:
+
+### Commodity_Industrial_Cycle
+**Theme**: Industrial activity pulse from base metals and commodity-related equities
+
+- **Current Index**: 100.03
+- **Change**: +0.00 (+0.00%)
+- **Historical Percentile**: 74.7% (Above median)
+- **Z-Score**: +0.71 (Normal)
+
+**Top Contributing Instruments**:
+  - LME_CA_Close: 8268.0000
+  - LME_ZS_Close: 2466.0000
+  - LME_AH_Close: 2178.0000
+  - LME_PB_Close: 2064.0000
+  - US_Stock_NUE_adj_close: 165.8428
+
+### Credit_Conditions
+**Theme**: Credit market health indicated by high-yield vs investment-grade spreads
+
+- **Current Index**: 99.93
+- **Change**: +0.00 (+0.00%)
+- **Historical Percentile**: 52.6% (Above median)
+- **Z-Score**: +0.44 (Normal)
+
+**Top Contributing Instruments**:
+  - US_Stock_LQD_adj_close: 102.8449
+  - US_Stock_AGG_adj_close: 93.3155
+  - US_Stock_JNK_adj_close: 86.1346
+  - US_Stock_EMB_adj_close: 81.2840
+  - US_Stock_BND_adj_close: 69.0612
+
+### Cyclicals_Industrials
+**Theme**: Real economy health from capital expenditure and export-sensitive equities
+
+- **Current Index**: 100.00
+- **Change**: +0.00 (+0.00%)
+- **Historical Percentile**: 12.9% (Below median)
+- **Z-Score**: -1.09 (Moderate)
+
+**Top Contributing Instruments**:
+  - US_Stock_DE_adj_close: 371.6934
+  - US_Stock_CAT_adj_close: 271.9207
+  - US_Stock_ALB_adj_close: 118.1903
+
+### Energy_Cycle
+**Theme**: Energy sector strength and inflation pulse from oil, gas, and energy equities
+
+- **Current Index**: 100.00
+- **Change**: +0.00 (+0.00%)
+- **Historical Percentile**: 30.1% (Below median)
+- **Z-Score**: -0.75 (Normal)
+
+**Top Contributing Instruments**:
+  - US_Stock_OIH_adj_close: 276.9038
+  - US_Stock_MPC_adj_close: 147.2782
+  - US_Stock_CVX_adj_close: 134.0707
+  - US_Stock_EOG_adj_close: 106.6047
+  - US_Stock_COP_adj_close: 102.7564
+
+### FX_Dollar_And_RiskFX
+**Theme**: Currency market dynamics including dollar strength and risk-on/off FX flows
+
+- **Current Index**: 100.00
+- **Change**: +0.00 (+0.00%)
+- **Historical Percentile**: 97.8% (Above median)
+- **Z-Score**: +1.55 (Moderate)
+
+**Top Contributing Instruments**:
+  - FX_GBPJPY: 187.7617
+  - FX_CHFJPY: 171.3544
+  - FX_EURJPY: 161.2307
+  - FX_USDJPY: 148.1195
+  - FX_CADJPY: 109.6905
+
+### Financials_Sensitive
+**Theme**: Financial sector health sensitive to yield curve and credit conditions
+
+- **Current Index**: 100.00
+- **Change**: +0.00 (+0.00%)
+- **Historical Percentile**: 41.7% (Below median)
+- **Z-Score**: -0.16 (Normal)
+
+**Top Contributing Instruments**:
+  - US_Stock_RY_adj_close: 92.2073
+  - US_Stock_MS_adj_close: 80.2611
+  - US_Stock_TD_adj_close: 55.4167
+  - US_Stock_BCS_adj_close: 6.5749
+
+### Market_Liquidity
+**Theme**: Trading activity and market liquidity measured by volumes across asset classes
+
+- **Current Index**: 99.92
+- **Change**: +0.00 (+0.00%)
+- **Historical Percentile**: 23.2% (Below median)
+- **Z-Score**: -0.62 (Normal)
+
+**Top Contributing Instruments**:
+  - US_Stock_EEM_adj_volume: 50591570.0000
+  - US_Stock_LQD_adj_volume: 34413972.0000
+  - US_Stock_SLV_adj_volume: 18249133.0000
+  - US_Stock_SPYV_adj_volume: 17009429.0000
+  - US_Stock_VWO_adj_volume: 15727460.0000
+
+### Rates_And_Inflation
+**Theme**: Interest rate environment and inflation expectations from nominal vs TIPS bonds
+
+- **Current Index**: 100.00
+- **Change**: +0.00 (+0.00%)
+- **Historical Percentile**: 29.6% (Below median)
+- **Z-Score**: -0.81 (Normal)
+
+**Top Contributing Instruments**:
+  - US_Stock_TIP_adj_close: 103.0856
+  - US_Stock_IEF_adj_close: 90.6894
+  - US_Stock_SHY_adj_close: 77.8873
+  - US_Stock_VGIT_adj_close: 55.9122
+  - US_Stock_VGLT_adj_close: 55.8351
+
+### Risk_Appetite_Equity
+**Theme**: Global risk appetite measured by broad equity beta and emerging market exposure
+
+- **Current Index**: 100.00
+- **Change**: +0.00 (+0.00%)
+- **Historical Percentile**: 29.2% (Below median)
+- **Z-Score**: -0.28 (Normal)
+
+**Top Contributing Instruments**:
+  - US_Stock_RSP_adj_close: 150.7353
+  - US_Stock_VT_adj_close: 98.3684
+  - US_Stock_ACWI_adj_close: 98.0962
+  - US_Stock_EWJ_adj_close: 63.6477
+  - US_Stock_VGK_adj_close: 59.5868
+
+### SafeHaven_Precious
+**Theme**: Risk aversion and safe-haven demand measured by precious metals complex
+
+- **Current Index**: 99.95
+- **Change**: +0.00 (+0.00%)
+- **Historical Percentile**: 32.2% (Below median)
+- **Z-Score**: -0.49 (Normal)
+
+**Top Contributing Instruments**:
+  - US_Stock_GLD_adj_close: 185.8400
+  - US_Stock_FNV_adj_close: 105.8119
+  - US_Stock_AEM_adj_close: 47.4619
+  - US_Stock_WPM_adj_close: 45.3550
+  - US_Stock_IAU_adj_close: 37.9500
+
+
+## Interpretation Task
+
+Please analyze the current market state based on these coincident indices.
+And forecast each financial instrument based on the reasoning.
+Consider:
+1. Which themes are showing strength vs weakness?
+2. Are there any notable divergences between related indices?
+3. What does this suggest about overall market regime (risk-on/off, cyclical/defensive)?
+4. Are there any specific sectors or regions showing unusual patterns?
+
+## Ultimate Goal
+Predict the next <H> steps given the previous <T> steps information attached.
+

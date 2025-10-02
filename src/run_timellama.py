@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """
 TimeLlaMA Training and Evaluation Script
+Dedicated script for TimeLlaMA with DynaLoRA fine-tuning approach
 """
 
 import argparse
@@ -15,15 +16,11 @@ import time
 
 warnings.filterwarnings('ignore')
 
-from timellama import TimeLlaMA
-from timellama.utils.tools import EarlyStopping, adjust_learning_rate
-from timellama.utils.metrics import metric
-
-try:
-    from timellama.data_provider import data_provider
-except ImportError:
-    print("Warning: data_provider not found.")
-    data_provider = None
+# Import TimeLlaMA model and utilities
+from model.TimeLlaMA import TimeLlaMA
+from utils.tools import EarlyStopping, adjust_learning_rate
+from utils.metrics import metric
+from data_provider.datafactory import data_provider
 
 try:
     from transformers import LlamaConfig, LlamaModel, LlamaTokenizer
@@ -39,6 +36,7 @@ class Exp_TimeLlaMA:
         self.args = args
         self.device = self._acquire_device()
         self.model = self._build_model().to(self.device)
+        self.prompt_template = self._load_prompt_template()
 
     def _acquire_device(self):
         if self.args.use_gpu:
@@ -53,6 +51,15 @@ class Exp_TimeLlaMA:
         if not TRANSFORMERS_AVAILABLE:
             raise ImportError("Transformers library is required")
         
+        # Determine number of channels from dataset before building the model
+        try:
+            train_data, _ = data_provider(self.args, flag='train')
+            num_channels = getattr(train_data, 'enc_in', None)
+            if isinstance(num_channels, int) and num_channels > 0:
+                self.args.enc_in = num_channels
+        except Exception:
+            num_channels = getattr(self.args, 'enc_in', None)
+
         if self.args.llm_model == 'LLAMA':
             # Use LlaMA-2 7B as specified in the TimeLlaMA paper
             try:
@@ -107,7 +114,6 @@ class Exp_TimeLlaMA:
             dropout=self.args.dropout,
             head_dropout=self.args.head_dropout,
             use_reprogramming=ablation_config['use_reprogramming'],
-            description=self.args.description,
             freeze_llm=ablation_config['freeze_llm'],
             # DynaLoRA parameters
             use_dynalora=ablation_config['use_dynalora'],
@@ -123,6 +129,26 @@ class Exp_TimeLlaMA:
         )
         
         return model
+
+    def _load_prompt_template(self):
+        """
+        Load regime prompt template from file and return as a string.
+        Replaces placeholders <T> and <H> per batch later.
+        """
+        prompt_path = getattr(self.args, 'prompt_path', 'datasets/prompts/example_prompt.txt')
+        try:
+            with open(prompt_path, 'r', encoding='utf-8') as f:
+                return f.read()
+        except Exception:
+            return "Predict the next <H> steps given the previous <T> steps."
+
+    def _format_prompt(self) -> str:
+        tpl = self.prompt_template
+        return tpl.replace('<T>', str(self.args.seq_len)).replace('<H>', str(self.args.pred_len))
+
+    def _build_batch_prompts(self, batch_size: int) -> list:
+        prompt = self._format_prompt()
+        return [prompt] * batch_size
 
     def _configure_ablation_variant(self):
         """
@@ -211,7 +237,7 @@ class Exp_TimeLlaMA:
         - SMAPE for short-term forecasting tasks
         """
         if hasattr(self.args, 'task_type') and self.args.task_type == 'short_term':
-            from timellama.utils.losses import smape_loss
+            from utils.losses import smape_loss
             return smape_loss()
         else:
             # Default to MSE for long-term forecasting
@@ -221,20 +247,13 @@ class Exp_TimeLlaMA:
         total_loss = []
         self.model.eval()
         with torch.no_grad():
-            for i, (batch_x, batch_y, batch_x_mark, batch_y_mark) in enumerate(vali_loader):
+            for i, (batch_x, batch_y, _x_mark, _y_mark) in enumerate(vali_loader):
                 batch_x = batch_x.float().to(self.device)
                 batch_y = batch_y.float().to(self.device)
-                batch_x_mark = batch_x_mark.float().to(self.device)
-                batch_y_mark = batch_y_mark.float().to(self.device)
-
-                dec_inp = torch.zeros_like(batch_y[:, -self.args.pred_len:, :]).float()
-                dec_inp = torch.cat([batch_y[:, :self.args.label_len, :], dec_inp], dim=1).float().to(self.device)
-                
-                outputs = self.model(batch_x, batch_x_mark, dec_inp, batch_y_mark)
-
-                f_dim = -1 if self.args.features == 'MS' else 0
-                outputs = outputs[:, -self.args.pred_len:, f_dim:]
-                batch_y = batch_y[:, -self.args.pred_len:, f_dim:].to(self.device)
+                batch_prompts = self._build_batch_prompts(batch_x.shape[0])
+                outputs = self.model(batch_x, prompts=batch_prompts)
+                # [B, N, TP] -> [B, TP, N]
+                outputs = outputs.transpose(1, 2)
 
                 pred = outputs.detach().cpu()
                 true = batch_y.detach().cpu()
@@ -268,21 +287,14 @@ class Exp_TimeLlaMA:
             if hasattr(self.model, 'reset_expert_usage_stats'):
                 self.model.reset_expert_usage_stats()
             
-            for i, (batch_x, batch_y, batch_x_mark, batch_y_mark) in enumerate(train_loader):
+            for i, (batch_x, batch_y, _x_mark, _y_mark) in enumerate(train_loader):
                 model_optim.zero_grad()
                 batch_x = batch_x.float().to(self.device)
                 batch_y = batch_y.float().to(self.device)
-                batch_x_mark = batch_x_mark.float().to(self.device)
-                batch_y_mark = batch_y_mark.float().to(self.device)
-
-                dec_inp = torch.zeros_like(batch_y[:, -self.args.pred_len:, :]).float()
-                dec_inp = torch.cat([batch_y[:, :self.args.label_len, :], dec_inp], dim=1).float().to(self.device)
-
-                outputs = self.model(batch_x, batch_x_mark, dec_inp, batch_y_mark)
-
-                f_dim = -1 if self.args.features == 'MS' else 0
-                outputs = outputs[:, -self.args.pred_len:, f_dim:]
-                batch_y = batch_y[:, -self.args.pred_len:, f_dim:].to(self.device)
+                batch_prompts = self._build_batch_prompts(batch_x.shape[0])
+                outputs = self.model(batch_x, prompts=batch_prompts)
+                # [B, N, TP] -> [B, TP, N]
+                outputs = outputs.transpose(1, 2)
                 loss = criterion(outputs, batch_y)
                 
                 # Add DynaLoRA regularization loss
@@ -319,7 +331,7 @@ class Exp_TimeLlaMA:
                 print("Early stopping")
                 break
 
-            adjust_learning_rate(model_optim, epoch + 1, self.args)
+            adjust_learning_rate(None, model_optim, None, epoch + 1, self.args)
 
         best_model_path = path + '/' + 'checkpoint'
         self.model.load_state_dict(torch.load(best_model_path))
@@ -339,20 +351,13 @@ class Exp_TimeLlaMA:
 
         self.model.eval()
         with torch.no_grad():
-            for i, (batch_x, batch_y, batch_x_mark, batch_y_mark) in enumerate(test_loader):
+            for i, (batch_x, batch_y, _x_mark, _y_mark) in enumerate(test_loader):
                 batch_x = batch_x.float().to(self.device)
                 batch_y = batch_y.float().to(self.device)
-                batch_x_mark = batch_x_mark.float().to(self.device)
-                batch_y_mark = batch_y_mark.float().to(self.device)
-
-                dec_inp = torch.zeros_like(batch_y[:, -self.args.pred_len:, :]).float()
-                dec_inp = torch.cat([batch_y[:, :self.args.label_len, :], dec_inp], dim=1).float().to(self.device)
-
-                outputs = self.model(batch_x, batch_x_mark, dec_inp, batch_y_mark)
-
-                f_dim = -1 if self.args.features == 'MS' else 0
-                outputs = outputs[:, -self.args.pred_len:, f_dim:]
-                batch_y = batch_y[:, -self.args.pred_len:, f_dim:].to(self.device)
+                batch_prompts = self._build_batch_prompts(batch_x.shape[0])
+                outputs = self.model(batch_x, prompts=batch_prompts)
+                # [B, N, TP] -> [B, TP, N]
+                outputs = outputs.transpose(1, 2)
                 outputs = outputs.detach().cpu().numpy()
                 batch_y = batch_y.detach().cpu().numpy()
 
@@ -370,7 +375,7 @@ class Exp_TimeLlaMA:
 
         # Use appropriate metrics based on task type as per TimeLlaMA paper
         if hasattr(self.args, 'task_type') and self.args.task_type == 'short_term':
-            from timellama.utils.metrics import short_term_metrics
+            from utils.metrics import short_term_metrics
             smape, mase, owa = short_term_metrics(preds, trues)
             print('SMAPE:{}, MASE:{}, OWA:{}'.format(smape, mase, owa))
             np.save(folder_path + 'metrics.npy', np.array([smape, mase, owa]))
@@ -395,14 +400,18 @@ if __name__ == "__main__":
     parser.add_argument('--model', type=str, required=True, default='TimeLlaMA')
 
     # data loader
-    parser.add_argument('--data', type=str, required=True, default='custom')
-    parser.add_argument('--root_path', type=str, default='./dataset/')
-    parser.add_argument('--data_path', type=str, default='/Users/minkeychang/commodity_prediction/kaggle/train.csv')
-    parser.add_argument('--labels_path', type=str, default='/Users/minkeychang/commodity_prediction/kaggle/train_labels.csv')
+    parser.add_argument('--data', type=str, required=True, default='commodity')
+    parser.add_argument('--root_path', type=str, default='/data/kaggle_projects/commodity_prediction/kaggle')
+    parser.add_argument('--data_path', type=str, default='train.csv')
+    parser.add_argument('--labels_path', type=str, default='/data/kaggle_projects/commodity_prediction/kaggle/train_labels.csv')
     parser.add_argument('--features', type=str, default='M')
     parser.add_argument('--target', type=str, default='OT')
     parser.add_argument('--freq', type=str, default='h')
     parser.add_argument('--checkpoints', type=str, default='./checkpoints/')
+    parser.add_argument('--percent', type=int, default=100)
+    parser.add_argument('--few_shot_ratio', type=float, default=1.0)
+    parser.add_argument('--num_workers', type=int, default=0)
+    parser.add_argument('--prompt_path', type=str, default='datasets/prompts/example_prompt.txt')
     parser.add_argument('--max_targets', type=int, default=50, help='maximum number of targets to use (for memory efficiency)')
     parser.add_argument('--task_type', type=str, default='long_term', choices=['long_term', 'short_term'], 
                         help='Task type: long_term (MSE loss) or short_term (SMAPE loss)')
@@ -431,11 +440,10 @@ if __name__ == "__main__":
     parser.add_argument('--use_channel_emb', action='store_true', default=True)
     parser.add_argument('--head_dropout', type=float, default=0.0)
     parser.add_argument('--use_reprogramming', action='store_true', default=True)
-    parser.add_argument('--description', type=str, default='Time series forecasting task')
     parser.add_argument('--freeze_llm', action='store_true', default=True)
     
     # DynaLoRA specific
-    parser.add_argument('--use_dynalora', action='store_true', default=False)
+    parser.add_argument('--use_dynalora', action='store_true', default=True)
     parser.add_argument('--dynalora_r_base', type=int, default=8)
     parser.add_argument('--dynalora_n_experts', type=int, default=4)
     parser.add_argument('--dynalora_dropout', type=float, default=0.0)
