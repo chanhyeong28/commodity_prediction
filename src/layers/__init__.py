@@ -1,9 +1,10 @@
 from .Embed import (
-    TSEmb, 
-    TSEmbConv, 
-    TSEmbHybrid, 
-    PositionalEmbedding, 
-    ChannelEmbedding
+    TSEmb,
+    TSEmbConv,
+    TSEmbHybrid,
+    PositionalEmbedding,
+    ChannelEmbedding,
+    PatchEmbedding,
 )
 from .SelfAttention_Family import (
     FullAttention,
@@ -13,7 +14,7 @@ from .SelfAttention_Family import (
     MultiHeadAttention,
     CrossAttention,
     TriangularCausalMask,
-    ProbMask
+    ProbMask,
 )
 from .Transformer_EncDec import (
     ConvLayer,
@@ -21,12 +22,17 @@ from .Transformer_EncDec import (
     Encoder,
     DecoderLayer,
     Decoder,
-    TimeLlaMAEncoder,
-    TimeLlaMADecoder
 )
 from .Modality_Alignment import PromptAlignment
-from .lora import LoRALinear, DynaLoRAConfig, DynaLoRAController
 from .StandardNorm import Normalize
+
+# Import DynaLoRA utilities from the sibling package
+from DynaLoRA.core import (
+    DynaLoRALinear,
+    DynaLoRAConfig,
+    DynaLoRAWrapper,
+    create_dynalora_model,
+)
 
 __all__ = [
     "TSEmb",
@@ -34,6 +40,7 @@ __all__ = [
     "TSEmbHybrid",
     "PositionalEmbedding",
     "ChannelEmbedding",
+    "PatchEmbedding",
     "FullAttention",
     "ProbAttention",
     "FlashAttention",
@@ -47,12 +54,11 @@ __all__ = [
     "Encoder",
     "DecoderLayer",
     "Decoder",
-    "TimeLlaMAEncoder",
-    "TimeLlaMADecoder",
     "PromptAlignment",
-    "LoRALinear",
+    "DynaLoRALinear",
     "DynaLoRAConfig",
-    "DynaLoRAController",
+    "DynaLoRAWrapper",
+    "create_dynalora_model",
     "Normalize",
 ]
 

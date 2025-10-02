@@ -3,9 +3,16 @@ import torch.nn as nn
 from typing import Optional, List, Union, Dict
 from math import sqrt
 
-from timellama.layers import TSEmb, TSEmbConv, TSEmbHybrid, PromptAlignment
-from timellama.layers.StandardNorm import Normalize
-from timellama.layers.DynaLoRA import DynaLoRAConfig, DynaLoRAWrapper, create_dynalora_model
+# Use local package imports
+from layers import (
+    TSEmb,
+    TSEmbConv,
+    TSEmbHybrid,
+    PromptAlignment,
+    Normalize,
+    DynaLoRAConfig,
+    DynaLoRAWrapper,
+)
 
 
 class FlattenHead(nn.Module):
@@ -204,11 +211,10 @@ class TimeLlaMA(nn.Module):
         # Reprogramming layer for vocabulary alignment
         if use_reprogramming:
             self.reprogramming_layer = ReprogrammingLayer(
-                d_model=d_model, 
-                n_heads=num_heads, 
-                d_ff=self.d_ff, 
+                d_model=d_model,
+                n_heads=num_heads,
                 d_llm=self.input_embeddings.embedding_dim,
-                attention_dropout=dropout
+                attention_dropout=dropout,
             )
         else:
             self.reprogramming_layer = None
@@ -224,11 +230,8 @@ class TimeLlaMA(nn.Module):
         else:
             self.output_head = nn.Linear(self.input_embeddings.embedding_dim, pred_len)  # Use d_llm instead of d_model
         
-        # Normalization layers
-        if num_channels is not None:
-            self.normalize_layers = Normalize(num_channels, affine=False)
-        else:
-            self.normalize_layers = None
+        # Instance normalization (RevIN) disabled by default to match dataset scaling
+        self.normalize_layers = None
         
         # Apply DynaLoRA if enabled
         if self.use_dynalora:
@@ -250,7 +253,8 @@ class TimeLlaMA(nn.Module):
     ):
         """Apply DynaLoRA to the model."""
         if target_modules is None:
-            target_modules = ['q_proj', 'k_proj', 'v_proj', 'o_proj', 'gate_proj', 'up_proj', 'down_proj']
+            # Focus on attention modules for time series (simplified)
+            target_modules = ['q_proj', 'k_proj', 'v_proj', 'o_proj']
         
         # Create DynaLoRA configuration with EXACT paper formulation
         config = DynaLoRAConfig(
@@ -264,8 +268,8 @@ class TimeLlaMA(nn.Module):
             use_exact_paper_formulation=True
         )
         
-        # Apply DynaLoRA to the model
-        self.dynalora_wrapper = DynaLoRAWrapper(self, config)
+        # Apply DynaLoRA to the LLM model, not the wrapper
+        self.dynalora_wrapper = DynaLoRAWrapper(self.llm, config)
         self.dynalora_wrapper.apply_dynalora(target_modules)
         
         # Freeze base layers and unfreeze LoRA parameters
@@ -443,9 +447,7 @@ class TimeLlaMA(nn.Module):
         device = x_enc.device
         B, TL, N = x_enc.shape
         
-        # Normalize input if normalization is enabled
-        if self.normalize_layers is not None:
-            x_enc = self.normalize_layers(x_enc, 'norm')
+        # Input normalization disabled (dataset-wide scaling handled in data loader)
         
         # 1) Channel-as-token embedding
         H0 = self.ts_emb(x_enc)                    # [B, N, d_model]
@@ -462,15 +464,14 @@ class TimeLlaMA(nn.Module):
             # This aligns time series tokens with prompt context but prompts do NOT go through LLM
             H0 = self.align(H0, prompt_embeddings)  # [B, N, d_model]
         
-        # 4) Reprogramming layer (if enabled)
+        # 4) Align to LLM input dimension
         if self.reprogramming_layer is not None:
-            # Get word embeddings for vocabulary alignment
+            # Use reprogramming against vocabulary embeddings to map to d_llm
             word_embeddings = self.input_embeddings.weight  # [vocab_size, d_llm]
-            H0 = self.reprogramming_layer(H0, word_embeddings, word_embeddings)
-        
-        # 5) Project to LLM dimension
-        # H0 is [B, N, d_model], need to project to [B, N, d_llm] for LLM input
-        H0_llm = self.llm_projection(H0)  # [B, N, d_llm]
+            H0_llm = self.reprogramming_layer(H0, word_embeddings, word_embeddings)  # [B, N, d_llm]
+        else:
+            # Direct linear projection to d_llm
+            H0_llm = self.llm_projection(H0)  # [B, N, d_llm]
         
         # 6) LLM encoding
         # Per paper: "text prompt is not passed through the Transformer backbone to minimize inference delay"
@@ -487,9 +488,7 @@ class TimeLlaMA(nn.Module):
             # Single-variate case with simple linear head
             y_hat = self.output_head(llm_out)  # [B, N, TP]
         
-        # Denormalize output if normalization was applied
-        if self.normalize_layers is not None:
-            y_hat = self.normalize_layers(y_hat, 'denorm')
+        # Denormalization is not applied here; outputs remain on dataset-scaled space
         
         return y_hat
 
