@@ -48,7 +48,7 @@ echo "Starting TimeLlaMA training on Mitsui commodity prediction dataset..."
 
 # Short-term forecasting (96 -> 96)
 echo "Training for 96->96 prediction..."
-python -u run.py \
+python -u run_timellama.py \
   --is_training 1 \
   --root_path $root_path \
   --data_path $data_path \
@@ -94,7 +94,7 @@ python -u run.py \
 
 # Medium-term forecasting (96 -> 192)
 echo "Training for 96->192 prediction..."
-python -u run.py \
+python -u run_timellama.py \
   --is_training 1 \
   --root_path $root_path \
   --data_path $data_path \
@@ -140,7 +140,7 @@ python -u run.py \
 
 # Long-term forecasting (96 -> 336)
 echo "Training for 96->336 prediction..."
-python -u run.py \
+python -u run_timellama.py \
   --is_training 1 \
   --root_path $root_path \
   --data_path $data_path \
@@ -186,7 +186,7 @@ python -u run.py \
 
 # Very long-term forecasting (96 -> 720)
 echo "Training for 96->720 prediction..."
-python -u run.py \
+python -u run_timellama.py \
   --is_training 1 \
   --root_path $root_path \
   --data_path $data_path \
